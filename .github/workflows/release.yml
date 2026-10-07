@@ -55,7 +55,7 @@ jobs:
           V=${GITHUB_REF_NAME#v}
           mkdir dist
           # portable zip
-          powershell Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/annotate_picture-$V-portable.zip
+          powershell -Command "Compress-Archive -Path 'build/windows/x64/runner/Release/*' -DestinationPath dist/annotate_picture-$V-portable.zip"
           # exe installer (Inno Setup, preinstalled)
           APP_VERSION=$V iscc packaging/installer.iss
           # msi (WiX 4+; MSI version must be numeric x.y.z)
