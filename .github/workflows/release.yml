@@ -59,7 +59,7 @@ jobs:
           # exe installer (Inno Setup, preinstalled)
           APP_VERSION=$V iscc packaging/installer.iss
           # msi (WiX 4+; MSI version must be numeric x.y.z)
-          dotnet tool install --global wix
+          dotnet tool install --global wix --version 5.0.2
           wix build packaging/installer.wxs -d AppVersion=${V%%-*} -o dist/annotate_picture-$V.msi
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: dist/* }
