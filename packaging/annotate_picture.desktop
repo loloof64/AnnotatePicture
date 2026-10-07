@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Annotate Picture
+Comment=Annotate picture with text
+Exec=annotate_picture
+Icon=annotate_picture
+Categories=Graphics;

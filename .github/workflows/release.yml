@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ['*']
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with: { channel: stable, cache: true }
+      - run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libfuse2 rpm
+      - run: sudo gem install fpm
+      - run: flutter build linux --release
+      - name: Package
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          B=build/linux/x64/release/bundle
+          mkdir -p dist stage/usr/bin stage/usr/share/applications stage/usr/share/icons/hicolor/512x512/apps
+          cp -r $B stage/opt-app
+          mkdir -p stage/opt && mv stage/opt-app stage/opt/annotate_picture
+          ln -s /opt/annotate_picture/annotate_picture stage/usr/bin/annotate_picture
+          cp packaging/annotate_picture.desktop stage/usr/share/applications/
+          cp web/icons/Icon-512.png stage/usr/share/icons/hicolor/512x512/apps/annotate_picture.png
+          for t in deb rpm; do
+            fpm -s dir -t $t -n annotate-picture -v "$V" --license MIT -p dist/ -C stage .
+          done
+          # AppImage
+          mkdir -p AppDir/usr/bin
+          cp -r $B/* AppDir/usr/bin/
+          cp packaging/annotate_picture.desktop AppDir/
+          cp web/icons/Icon-512.png AppDir/annotate_picture.png
+          ln -s usr/bin/annotate_picture AppDir/AppRun
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir dist/annotate_picture-$V-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with: { name: linux, path: dist/* }
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with: { channel: stable, cache: true }
+      - run: flutter build windows --release
+      - name: Package
+        shell: bash
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          mkdir dist
+          # portable zip
+          powershell Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/annotate_picture-$V-portable.zip
+          # exe installer (Inno Setup, preinstalled)
+          APP_VERSION=$V iscc packaging/installer.iss
+          # msi (WiX 4+; MSI version must be numeric x.y.z)
+          dotnet tool install --global wix
+          wix build packaging/installer.wxs -d AppVersion=${V%%-*} -o dist/annotate_picture-$V.msi
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: dist/* }
+
+  release:
+    needs: [linux, windows]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - name: Notes from CHANGELOG
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          awk -v v="$V" '/^## /{p=index($0,"["v"]")>0; next} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "No CHANGELOG entry for $V"; exit 1; }
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: notes.md
+          files: dist/*
